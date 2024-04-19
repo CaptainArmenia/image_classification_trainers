@@ -4,20 +4,20 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 
 # Load and preprocess data
-def load_data(directory, target_size=(96, 96), batch_size=32):
-    datagen = ImageDataGenerator(rescale=1./255, validation_split=0.2)
+def load_data(directory, target_size=(224, 224), batch_size=32):
+    datagen = ImageDataGenerator(preprocessing_function=lambda x: (x / 127.5) - 1.0, validation_split=0.2)
     train_generator = datagen.flow_from_directory(
         directory,
         target_size=target_size,
         batch_size=batch_size,
-        color_mode='grayscale',
+        #color_mode='grayscale',
         class_mode='binary',
         subset='training')
     validation_generator = datagen.flow_from_directory(
         directory,
         target_size=target_size,
         batch_size=batch_size,
-        color_mode='grayscale',
+        #color_mode='grayscale',
         class_mode='binary',
         subset='validation')
     return train_generator, validation_generator

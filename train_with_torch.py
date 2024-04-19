@@ -16,8 +16,7 @@ if __name__ == '__main__':
     # Just normalization for validation
     data_transforms = {
         'train': transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
+            transforms.Resize(480),
             A.HorizontalFlip(p=0.5),
             A.RandomBrightnessContrast(p=0.2),
             A.GaussianBlur(blur_limit=(3, 7), p=0.05),
@@ -27,8 +26,7 @@ if __name__ == '__main__':
             transforms.ToTensor(),
         ]),
         'val': transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
+            transforms.Resize(480),
             transforms.ToTensor(),
         ]),
     }

@@ -2,9 +2,34 @@ import os
 import argparse
 
 from fastai.vision.all import *
+from torchvision.models.quantization import mobilenet_v2
 from fastai.callback.tracker import SaveModelCallback
 from fastai.vision.augment import *
 import torch
+import torch.nn as nn
+import torch.quantization
+
+
+def create_grayscale_mobilenet_v2(n_out=2, pretrained=True, qat=True):
+    # Load a pretrained MobileNetV2 model
+    model = mobilenet_v2(pretrained=pretrained).features
+    # Modify the first convolution layer
+    model[0][0] = torch.nn.Conv2d(1, 32, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+    
+    # Add QAT if specified
+    if qat:
+        model.qconfig = torch.quantization.get_default_qat_qconfig('fbgemm')
+        model = torch.quantization.prepare_qat(model)
+    
+    # Replace the classifier part of MobileNetV2
+    classifier = nn.Sequential(
+        nn.AdaptiveAvgPool2d((1, 1)),
+        nn.Flatten(),
+        nn.Linear(1280, n_out)
+    )
+    
+    # Create a custom model combining the modified MobileNetV2 with the new classifier
+    return nn.Sequential(model, classifier)
 
 # Custom transforms compatible with MPS
 class VerticalFlip(Transform):
@@ -18,7 +43,7 @@ class VerticalFlip(Transform):
 
 class Rotate90(Transform):
     def encodes(self, x:PILImage):
-        return x.rotate(90, expand=True)
+        return x.rotate(-90, expand=True)
     
 
 def rotate_image_90_deg(img:PILImage):
@@ -27,7 +52,7 @@ def rotate_image_90_deg(img:PILImage):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset_path', type=str, default='~/Desktop/datasets/cat_dataset_unsplit/')
+    parser.add_argument('--dataset_path', type=str, default='/Users/andy/Desktop/datasets/cat_dataset_unsplit/')
     args = parser.parse_args()
 
     # Check if the dataset path exists
@@ -51,14 +76,27 @@ if __name__ == '__main__':
         #Warp(magnitude=0.2, p=0.8), # Warping
         Brightness(max_lighting=0.2, p=0.75), # Brightness
         Contrast(max_lighting=0.2, p=0.75), # Contrast
+        Normalize.from_stats([0.5], [0.5]) # Normalizing to [-1,1]
     ]
     
     item_tfms=[Resize(224), Rotate90()]
 
-    dls = ImageDataLoaders.from_folder(args.dataset_path, valid_pct=0.2, seed=42,
-                                    item_tfms=item_tfms,
-                                    batch_tfms=batch_tfms,
-                                    device=device)
+    def label_func(f): return f.parent.name  # Define according to your data structure
+
+    dblock = DataBlock(blocks=(ImageBlock(cls=PILImageBW), CategoryBlock),
+                    get_items=get_image_files, 
+                    splitter=RandomSplitter(valid_pct=0.2, seed=42),
+                    get_y=label_func,
+                    item_tfms=item_tfms,
+                    batch_tfms=batch_tfms  # Normalizing to [-1,1]
+                    )
+
+    dls = dblock.dataloaders(args.dataset_path, bs=32, device=device)
+
+    # dls = ImageDataLoaders.from_folder(args.dataset_path, valid_pct=0.2, seed=42,
+    #                                 item_tfms=item_tfms,
+    #                                 batch_tfms=batch_tfms,
+    #                                 device=device)
 
     # Make plot directory
     os.makedirs('plots', exist_ok=True)
@@ -71,7 +109,10 @@ if __name__ == '__main__':
     dls.valid.show_batch(max_n=9, figsize=(7, 6))
     plt.savefig('plots/val_batch.png')
 
-    learn = cnn_learner(dls, resnet18, metrics=accuracy)
+    # Create the modified model
+    model = create_grayscale_mobilenet_v2()
+
+    learn = Learner(dls, model, loss_func=CrossEntropyLossFlat(), metrics=accuracy)
 
     # Print the device on which the model will be trained
     print(f"Training on {learn.dls.device}")

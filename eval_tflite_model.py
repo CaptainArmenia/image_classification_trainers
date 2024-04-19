@@ -3,20 +3,20 @@ import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import matplotlib.pyplot as plt
 
-def load_data(directory, target_size=(96, 96), batch_size=1):
-    datagen = ImageDataGenerator(rescale=1./255, validation_split=0.2)
+def load_data(directory, target_size=(224, 224), batch_size=1):
+    datagen = ImageDataGenerator(preprocessing_function=lambda x: (x / 127.5) - 1.0, validation_split=0.2)
     train_generator = datagen.flow_from_directory(
         directory,
         target_size=target_size,
         batch_size=batch_size,
-        color_mode='grayscale',
+        #color_mode='grayscale',
         class_mode='binary',
         subset='training')
     validation_generator = datagen.flow_from_directory(
         directory,
         target_size=target_size,
         batch_size=batch_size,
-        color_mode='grayscale',
+        #color_mode='grayscale',
         class_mode='binary',
         subset='validation')
     return train_generator, validation_generator
@@ -51,7 +51,7 @@ def visualize_predictions(interpreter, eval_generator):
         predictions.append(predicted_label)
 
         plt.subplot(4, 8, i+1)  # Assuming batch size is 32; adjust subplot grid as needed
-        plt.imshow(images[i].reshape(96, 96), cmap='gray')
+        plt.imshow(images[i].reshape(224, 224, 3))
         plt.title(f'Pred: {predicted_label}\nTrue: {int(labels[i])}')
         plt.axis('off')
 
